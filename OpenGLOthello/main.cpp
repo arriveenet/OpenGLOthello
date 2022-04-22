@@ -17,7 +17,44 @@
 
 using namespace glm;
 
-Disc disc[BOARD_WIDTH][BOARD_HEIGHT];
+enum {
+	TURN_BLACK,
+	TURN_WHITE,
+	TURN_NONE,
+	TURN_MAX
+};
+
+enum {
+	DIRECTION_UP,			// 上
+	DIRECTION_UP_LEFT,		// 左上
+	DIRECTION_LEFT,			// 左
+	DIRECTION_DOWN_LEFT,	// 左下
+	DIRECTION_DOWN,			// 下
+	DIRECTION_DOWN_RIGHT,	// 右下
+	DIRECTION_RIGHT,		// 右
+	DIRECTION_UP_RIGHT,		// 右上
+	DIRECTION_MAX,			// 方向の数
+};
+
+ivec2 directions[DIRECTION_MAX] =
+{
+	{ 0, -1},	// DIRECTION_UP
+	{-1, -1},	// DIRECTION_UP_LEFT
+	{-1,  0},	// DIRECTION_LEFT
+	{-1,  1},	// DIRECTION_DOWN_LEFT
+	{ 0,  1},	// DIRECTION_DOWN
+	{ 1,  1},	// DIRECTION_DOWN_RIGHT
+	{ 1,  0},	// DIRECTION_RIGHT
+	{ 1, -1}	// DIRECTION_UP_RIGHT
+};
+
+const char* turnNames[] = {
+	"BLACK",
+	"WHITE",
+	"NONE"
+};
+
+Disc board[BOARD_WIDTH][BOARD_HEIGHT];
 
 mat4 model;
 mat4 proj;
@@ -27,8 +64,10 @@ vec3 center;
 vec3 eye;
 vec3 up;
 
-int turn = 0;
-int count[DISC_STATE_MAX];
+int turn = TURN_BLACK;
+int blackCount = 2;
+int whiteCount = 2;
+int winner = -1;
 
 void fontDraw(int x, int y, const char *format, ...)
 {
@@ -157,8 +196,64 @@ void drawBoard()
 	glEnd();
 }
 
+int getDiscCount(int _color)
+{
+	int count = 0;
+
+	for (int y = 0; y < BOARD_HEIGHT; y++)
+		for (int x = 0; x < BOARD_WIDTH; x++)
+			if (board[y][x].getState() == _color)
+				count++;
+
+	return count;
+}
+
 bool checkCanPut(int _color, int _x, int _y, bool _turnOver)
 {
+	bool result = false;
+
+	if (board[_x][_y].getState() != DISC_STATE_NONE)
+		return false;
+
+	int opponent = _color ^ 1;
+
+	for (int i = 0; i < DIRECTION_MAX; i++) {
+		ivec2 currentPosition = ivec2(_x, _y);
+		currentPosition += directions[i];
+
+		if (board[currentPosition.x][currentPosition.y].getState() != opponent)
+			continue;
+
+		while (1) {
+			currentPosition += directions[i];
+			if ((currentPosition.x < 0)
+				|| (currentPosition.x >= BOARD_WIDTH)
+				|| (currentPosition.y < 0)
+				|| (currentPosition.y >= BOARD_HEIGHT)
+				) {
+				break;
+			}
+
+			if (board[currentPosition.x][currentPosition.y].getState() == DISC_STATE_NONE)
+				break;
+
+			if (board[currentPosition.x][currentPosition.y].getState() == _color) {
+				result = true;
+				if (_turnOver) {
+					ivec2 reversePosition = ivec2(_x, _y);
+					//reversePosition += directions[i];
+
+					do {
+						board[reversePosition.x][reversePosition.y].setState(_color);
+						reversePosition += directions[i];
+					} while (board[reversePosition.x][reversePosition.y].getState() != _color);
+				}
+			}
+		}
+	}
+
+	return result;
+	/*
 	bool result = false;
 	if ((disc[_x][_y].getState() != DISC_STATE_NONE)
 		|| (_color <= DISC_STATE_NONE)
@@ -197,6 +292,7 @@ bool checkCanPut(int _color, int _x, int _y, bool _turnOver)
 		}
 
 	return result;
+	*/
 }
 
 bool checkCanPutAll(int _color) {
@@ -256,35 +352,41 @@ void display(void)
 
 	for (int x = 0; x < BOARD_WIDTH; x++)
 		for (int y = 0; y < BOARD_HEIGHT; y++)
-			disc[x][y].draw();
+			board[x][y].draw();
 
 	checkCanPutAll(turn);
-	xyzAxes(1.f);
 	glPopMatrix();
 
 	glColor3ub(0xff, 0xff, 0xff);
-	const char* color[] = {
-		"BLACK",
-		"WHITE"
-	};
-	fontDraw(10,10, "turn: %s",color[turn]);
-	fontDraw(10,20, "black: %d", count[DISC_STATE_BLACK]);
-	fontDraw(10, 30, "white: %d", count[DISC_STATE_WHITE]);
+	fontDraw(10,10, "turn: %s",turnNames[turn]);
+	fontDraw(10,20, "black: %d", blackCount);
+	fontDraw(10, 30, "white: %d", whiteCount);
+	if (winner != -1) {
+		if (winner == TURN_NONE)
+			fontDraw(10, 40, "Draw");
+		else
+			fontDraw(10, 40, "Winner: %s", turnNames[winner]);
+	}
 
 	glutSwapBuffers();
 }
 
 void idle(void)
 {
-	if(!checkCanPutAll(turn))
+	// どこにも置ける場所がなければパスする
+	if (!checkCanPutAll(turn)) {
 		turn ^= 1;
+		if (!checkCanPutAll(turn)) {
+			turn = TURN_NONE;
 
-	count[0] = 0;
-	count[1] = 0;
-	for (int y = 0; y < BOARD_HEIGHT; y++)
-		for (int x = 0; x < BOARD_WIDTH; x++)
-			if (disc[y][x].getState() != DISC_STATE_NONE)
-				count[disc[y][x].getState()]++;
+			if (blackCount > whiteCount)
+				winner = TURN_BLACK;
+			else if (whiteCount > blackCount)
+				winner = TURN_WHITE;
+			else
+				winner = TURN_NONE;
+		}
+	}
 
 	glutPostRedisplay();
 }
@@ -314,8 +416,11 @@ void mouse(int button, int state, int x, int y)
 		int x = (int)mouse3d.x;
 		int y = (int)mouse3d.z;
 		
-		if(checkCanPut(turn, x, y, true))
+		if (checkCanPut(turn, x, y, true)) {
 			turn ^= 1;
+			blackCount = getDiscCount(DISC_STATE_BLACK);
+			whiteCount = getDiscCount(DISC_STATE_WHITE);
+		}
 	
 	}
 }
@@ -336,11 +441,11 @@ int main(int argc, char** argv) {
 
 	for(int x = 0; x < BOARD_WIDTH; x++)
 		for (int y = 0; y < BOARD_HEIGHT; y++) 
-			disc[x][y].setPosition(x+DISC_DEFAULT_RADIUS, y+DISC_DEFAULT_RADIUS);
-	disc[3][3].setState(DISC_STATE_WHITE);
-	disc[3][4].setState(DISC_STATE_BLACK);
-	disc[4][4].setState(DISC_STATE_WHITE);
-	disc[4][3].setState(DISC_STATE_BLACK);
+			board[x][y].setPosition(x+DISC_DEFAULT_RADIUS, y+DISC_DEFAULT_RADIUS);
+	board[3][3].setState(DISC_STATE_WHITE);
+	board[3][4].setState(DISC_STATE_BLACK);
+	board[4][4].setState(DISC_STATE_WHITE);
+	board[4][3].setState(DISC_STATE_BLACK);
 
 	glutDisplayFunc(display);
 	glutIdleFunc(idle);
