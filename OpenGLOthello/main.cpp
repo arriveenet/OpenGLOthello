@@ -215,14 +215,20 @@ bool checkCanPut(int _color, int _x, int _y, bool _turnOver)
 	if (board[_x][_y].getState() != DISC_STATE_NONE)
 		return false;
 
-	int opponent = _color ^ 1;
+	int opponent = _color ^ 1;	// ‘Šè‚ÌÎ‚ÌF
 
 	for (int i = 0; i < DIRECTION_MAX; i++) {
 		ivec2 currentPosition = ivec2(_x, _y);
 		currentPosition += directions[i];
 
-		if (board[currentPosition.x][currentPosition.y].getState() != opponent)
+		if ((currentPosition.x < 0)
+			|| (currentPosition.x >= BOARD_WIDTH)
+			|| (currentPosition.y < 0)
+			|| (currentPosition.y >= BOARD_HEIGHT)
+			|| (board[currentPosition.x][currentPosition.y].getState() != opponent)
+			) {
 			continue;
+		}
 
 		while (1) {
 			currentPosition += directions[i];
