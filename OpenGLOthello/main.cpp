@@ -1,11 +1,15 @@
 #define _USE_MATH_DEFINES
 #include <math.h>
+#include <time.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <freeglut.h>
+
 #include <glm/glm.hpp>
 #include <glm/gtx/transform.hpp>
 #include <glm/gtx/intersect.hpp>
+
+#include <vector>
 
 #include "Disc.h"
 
@@ -68,6 +72,7 @@ int turn = TURN_BLACK;
 int blackCount = 2;
 int whiteCount = 2;
 int winner = -1;
+bool isPlayer[TURN_MAX];
 
 void fontDraw(int x, int y, const char *format, ...)
 {
@@ -208,7 +213,7 @@ int getDiscCount(int _color)
 	return count;
 }
 
-bool checkCanPut(int _color, int _x, int _y, bool _turnOver)
+bool checkCanPut(int _color, int _x, int _y, bool _turnOver = false)
 {
 	bool result = false;
 
@@ -259,46 +264,6 @@ bool checkCanPut(int _color, int _x, int _y, bool _turnOver)
 	}
 
 	return result;
-	/*
-	bool result = false;
-	if ((disc[_x][_y].getState() != DISC_STATE_NONE)
-		|| (_color <= DISC_STATE_NONE)
-		|| (_color >= DISC_STATE_MAX))
-		return false;
-	
-	for (int dx = -1; dx <= 1; dx++)
-		for (int dy = -1; dy <= 1; dy++) {
-			if (dx == 0 && dy == 0)
-				continue;
-			int x = _x + dx;
-			int y = _y + dy;
-			while (1) {
-				if ((x < 0) || (x >= BOARD_WIDTH) || (y < 0) || (y >= BOARD_HEIGHT)
-					|| (disc[x][y].getState() == DISC_STATE_NONE)
-					|| (disc[x][y].getState() == _color))
-					break;
-				x += dx;
-				y += dy;
-				if (disc[x][y].getState() == _color) {
-					result = true;
-					if (_turnOver) {
-						int nx = _x, ny = _y;
-						while (1) {
-							if ((nx < 0) || (nx >= BOARD_WIDTH) || (ny < 0) || (ny >= BOARD_HEIGHT))
-								break;
-							disc[nx][ny].setState(_color);
-							nx += dx;
-							ny += dy;
-							if ((x == nx) && (y == ny))
-								break;
-						}
-					}
-				}
-			}
-		}
-
-	return result;
-	*/
 }
 
 bool checkCanPutAll(int _color) {
@@ -394,6 +359,23 @@ void idle(void)
 		}
 	}
 
+	// プレイヤーのターンでなければ（AI)
+	if (!isPlayer[turn] && turn != TURN_NONE) {
+		std::vector<ivec2> positions;
+		for(int y = 0; y < BOARD_HEIGHT; y++)
+			for (int x = 0; x < BOARD_WIDTH; x++) {
+				if (checkCanPut(turn, x, y)) {
+					positions.push_back(ivec2(x, y));
+					//printf("%d, %d\n", x, y);
+				}
+			}
+
+		// ランダムで置ける場所に石を置く
+		ivec2 placePosition = positions[rand() % positions.size()];
+		checkCanPut(turn, placePosition.x, placePosition.y, true);
+		turn ^= 1;
+	}
+
 	glutPostRedisplay();
 }
 
@@ -432,6 +414,8 @@ void mouse(int button, int state, int x, int y)
 }
 
 int main(int argc, char** argv) {
+	srand((unsigned int)time(NULL));
+
 	glutInit(&argc, argv);
 	glutInitDisplayMode(GLUT_DOUBLE);
 	glutInitWindowPosition(640, 0);
@@ -452,6 +436,9 @@ int main(int argc, char** argv) {
 	board[3][4].setState(DISC_STATE_BLACK);
 	board[4][4].setState(DISC_STATE_WHITE);
 	board[4][3].setState(DISC_STATE_BLACK);
+
+	isPlayer[TURN_BLACK] = true;
+	isPlayer[TURN_WHITE] = true;
 
 	glutDisplayFunc(display);
 	glutIdleFunc(idle);
